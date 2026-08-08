@@ -318,58 +318,6 @@ export function VehicleBody({ config, id, manual = true, position, yaw = 0, chil
     if (!body) return;
 
     bikeKinematic(body, rt, s, config, delta);
-    return;
-
-    const driven = s.controlMode === "driving" && s.activeVehicleId === id;
-
-    const pos = body.translation();
-    const quat = body.rotation();
-    const lin = body.linvel();
-    const fwd = quatVec(quat, 0, 0, 1);
-    const yaw = Math.atan2(fwd.x, fwd.z);
-    const vf = fwd.x * lin.x + fwd.z * lin.z;
-
-    rt.pos.x = pos.x;
-    rt.pos.y = pos.y;
-    rt.pos.z = pos.z;
-    rt.yaw = yaw;
-    rt.speed = vf;
-    rt.updateTick++;
-
-    if (wheels.current.length === 4) {
-      for (let i = 0; i < 4; i++) {
-        const w = wheels.current[i];
-        const v = wheelVis.current[i];
-        w.steer = v.steer;
-        w.spring = v.spring;
-        w.spinAngle = -v.rot;
-      }
-    }
-
-    if (driven) {
-      useGame.getState().setSpeed(Math.abs(vf) * 3.6);
-      if (Math.abs(vf) < 0.4) {
-        worldApi.ground.lastGood = { x: pos.x, z: pos.z };
-      }
-      if (input.justPressed("headlights")) {
-        rt.headlightsOn = !rt.headlightsOn;
-      }
-      if (input.justPressed("reset")) {
-        const ri = nearestRoadInfo(pos.x, pos.z);
-        body.setTranslation({ x: ri.x, y: groundHeightAt(ri.x, ri.z) + config.clearance + 0.25, z: ri.z }, true);
-        body.setLinvel({ x: 0, y: 0, z: 0 }, true);
-        body.setAngvel({ x: 0, y: 0, z: 0 }, true);
-        useGame.getState().setResetHint(false);
-      }
-    }
-
-    const mag = Math.hypot(lin.x, lin.y, lin.z);
-    const drop = lastImpactSpeed.current - mag;
-    if (drop > 5 && mag < 14) {
-      rt.damage = clamp(rt.damage + drop / 50, 0, 1);
-      worldApi.camera.shake = Math.min(1, (worldApi.camera.shake || 0) + clamp(drop / 25, 0.15, 0.6));
-    }
-    lastImpactSpeed.current = mag;
   });
 
   const g = groundHeightAt(position[0], position[2]);
