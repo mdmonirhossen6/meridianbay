@@ -318,6 +318,9 @@ export function VehicleBody({ config, id, manual = true, position, yaw = 0, chil
     if (!body) return;
 
     bikeKinematic(body, rt, s, config, delta);
+
+    const t = body.translation();
+    ((window as any).__vehBodies ??= {})[id] = { x: +t.x.toFixed(3), y: +t.y.toFixed(3), z: +t.z.toFixed(3) };
   });
 
   const g = groundHeightAt(position[0], position[2]);
