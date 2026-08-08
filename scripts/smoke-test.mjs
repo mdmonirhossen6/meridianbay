@@ -86,10 +86,13 @@ async function main() {
 
   // --- drive forward
   await page.evaluate(() => { window.__sus = {}; window.__susEnabled = true; });
+  const b0 = await page.evaluate(() => window.__vehBodies?.["parked-0"] ?? null);
   await page.keyboard.down(key("w"));
   await sleep(2400);
   let d1 = await api();
+  const b1 = await page.evaluate(() => window.__vehBodies?.["parked-0"] ?? null);
   console.log(`DRIVE W: speed=${d1.speed.toFixed(1)} mode=${d1.mode} ${d1.mode === "driving" && d1.speed > 3 ? "OK" : "FAIL"}`);
+  console.log(`body: ${JSON.stringify(b0)} -> ${JSON.stringify(b1)} moved=${JSON.stringify(b0) !== JSON.stringify(b1)}`);
   console.log("dbg:", JSON.stringify(await page.evaluate(() => window.__sus.drivenCar ?? null)));
   await page.keyboard.up(key("w"));
   await sleep(600);
