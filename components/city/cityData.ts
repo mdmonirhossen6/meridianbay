@@ -272,7 +272,7 @@ export function getCity(): CityData {
     const [sx, sz] = spots[k];
     const road = nearestRoadInfo(sx, sz);
     const yaw = road.yaw + (spawnRng() > 0.5 ? Math.PI : 0);
-    spawns.push({ x: sx, z: sz, yaw, type: types[k % types.length] });
+    spawns.push({ x: road.x, z: road.z, yaw, type: types[k % types.length] });
   }
 
   cachedCity = { blocks, buildings, landmarks, spawns };
