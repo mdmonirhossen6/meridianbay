@@ -3,7 +3,7 @@
 import * as THREE from "three";
 import { useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Physics, useRapier } from "@react-three/rapier";
+import { Physics, useRapier, useBeforePhysicsStep } from "@react-three/rapier";
 import { useGame } from "@/store/gameStore";
 import { input } from "@/lib/input/InputManager";
 import { worldApi } from "@/lib/worldApi";
@@ -71,6 +71,9 @@ function PhysicsDebugProbe() {
       return { x: v.x, y: v.y, z: v.z };
     };
   }, [world, rapier, camera]);
+  useBeforePhysicsStep(() => {
+    (window as any).__stepProbe = ((window as any).__stepProbe || 0) + 1;
+  });
   return null;
 }
 
@@ -88,6 +91,8 @@ function SystemLoop() {  const lastVehicle = useRef<string | null>(null);
       updateObjectiveSystem(dt);
     }
 
+    if (input.justPressed("pause")) s.togglePause();
+
     if (s.phase === "playing") {
       if (input.justPressed("radio")) {
         const next = (s.radio + 1) % (RADIO_NAMES.length);
@@ -101,7 +106,6 @@ function SystemLoop() {  const lastVehicle = useRef<string | null>(null);
         s.toggleMuted();
         setMuted(s.muted);
       }
-      if (input.justPressed("pause")) s.togglePause();
     }
 
     const v = s.activeVehicleId ? worldApi.vehicles.get(s.activeVehicleId) : undefined;
@@ -255,7 +259,8 @@ export function Scene() {
         vehicle: useGame.getState().activeVehicleId,
       }),
       buildings: getCity().buildings.map((b) => ({ x: b.x, z: b.z, w: b.w, d: b.d })),
-      vehicles: () => Array.from(worldApi.vehicles.values()).map((v) => ({ id: v.id, x: v.pos.x, y: v.pos.y, z: v.pos.z, speed: v.speed })),
+      vehicles: () =>
+        Array.from(worldApi.vehicles.values()).map((v) => ({ id: v.id, x: v.pos.x, y: v.pos.y, z: v.pos.z, speed: v.speed, class: v.class })),
       teleport: (x: number, z: number) => worldApi.teleportPlayer(x, groundHeightAt(x, z) + 0.88, z),
       bodyHandle: () => worldApi.playerBodyRef?.current?.handle ?? null,
       bodyIsBody: () => !!(worldApi.playerBodyRef?.current && worldApi.playerBodyRef.current.setTranslation && worldApi.playerBodyRef.current.translation),

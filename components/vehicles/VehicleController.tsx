@@ -39,7 +39,7 @@ export function Wheel({ pos, radius, width, front, hub = "#cdd2da" }: { pos: { x
   }, [api, register]);
 
   useFrame(() => {
-    if (root.current) root.current.position.y = -radius * 0.2 + api.spring * 0.6;
+    if (root.current) root.current.position.y = 0.06 + api.spring * 0.55;
     if (steerRef.current) steerRef.current.rotation.y = api.steer;
     if (spinRef.current) spinRef.current.rotation.x = api.spinAngle;
   });
@@ -84,6 +84,7 @@ export function VehicleBody({ config, id, manual = true, position, yaw = 0, chil
   const { world, rapier } = useRapier();
   const lastImpactSpeed = useRef(0);
   const evictUntil = useRef(0);
+  (window as any).__vehRender = ((window as any).__vehRender || 0) + 1;
   const wheelVis = useRef([
     { spring: 0, steer: 0, rot: 0 },
     { spring: 0, steer: 0, rot: 0 },
@@ -132,7 +133,24 @@ export function VehicleBody({ config, id, manual = true, position, yaw = 0, chil
 
   useBeforePhysicsStep(() => {
     const body = bodyRef.current;
+    const dbg = (window as any).__sus as any;
+    if (dbg) {
+      dbg.steps = (dbg.steps || 0) + 1;
+      dbg.hasBody = !!body;
+      dbg.bike = config.bike;
+      dbg.id = id;
+      if (body && !dbg.methods) {
+        dbg.methods = Object.getOwnPropertyNames(Object.getPrototypeOf(body)).filter((n) => n.includes("Force") || n.includes("Impulse")).join(",");
+      }
+      if ((dbg.steps || 0) <= 30) {
+        const lin = body.linvel();
+        const pos = body.translation();
+        dbg.first = dbg.first || [];
+        dbg.first.push({ s: dbg.steps, y: +pos.y.toFixed(3), vy: +lin.y.toFixed(2), hits: dbg.hits ?? 0, lastToi: +(dbg.lastToi ?? -1).toFixed(2), spring: Math.round(dbg.lastSpring ?? 0) });
+      }
+    }
     if (!body || config.bike) return;
+    if (!(window as any).__susEnabled) return;
     const rt = worldApi.vehicles.get(id);
     if (!rt) return;
     const s = useGame.getState();
@@ -147,7 +165,11 @@ export function VehicleBody({ config, id, manual = true, position, yaw = 0, chil
       handbrake = input.is("jump");
       useGame.getState().setResetHint(false);
     }
-
+    if (dbg) {
+      dbg.throttle = throttle;
+      dbg.steerIn = steer;
+      dbg.driven = driven;
+    }
     const evicting = performance.now() < evictUntil.current;
 
     const pos = body.translation();
@@ -166,11 +188,11 @@ export function VehicleBody({ config, id, manual = true, position, yaw = 0, chil
     rt.steer = steerAngle.current;
 
     const k = config.mass * 27.5; // spring stiffness N/m (~2.6Hz)
-    const c = config.mass * 2.0; // damping
+    const c = config.mass * 6.5; // damping (~0.55 critical @ suspension nat freq)
     const staticLoad = (config.mass * 9.81) / 4;
     const ef = (config.accel * config.mass) / 4;
     const bf = (config.brake * config.mass) / 4;
-    const rest = config.wheelRadius + 0.09;
+    const rest = config.wheelRadius + config.clearance + 0.09;
     const anchors = [
       { x: -config.wheelTrack / 2, z: config.wheelBase / 2 },
       { x: config.wheelTrack / 2, z: config.wheelBase / 2 },
@@ -179,28 +201,41 @@ export function VehicleBody({ config, id, manual = true, position, yaw = 0, chil
     ];
     const steerSin = Math.sin(steerAngle.current);
     const steerCos = Math.cos(steerAngle.current);
+    let groundedCount = 0;
     let maxSlip = 0;
+    if (dbg) {
+      dbg.hits = 0;
+      dbg.lastToi = -1;
+      dbg.lastSpring = 0;
+      dbg.maxLen = config.wheelRadius + 0.12;
+      dbg.anchorY = config.clearance + config.wheelRadius;
+      dbg.posY = pos.y;
+    }
 
     for (let i = 0; i < 4; i++) {
       const front = i < 2;
       const a = anchors[i];
-      const anchor = quatVec(quat, a.x, config.clearance + config.wheelRadius - 0.05, a.z);
+      const anchor = quatVec(quat, a.x, config.clearance + config.wheelRadius, a.z);
       const wx = pos.x + anchor.x;
       const wy = pos.y + anchor.y;
       const wz = pos.z + anchor.z;
 
-      const ray = new rapier.Ray({ x: wx, y: wy + 0.34, z: wz }, { x: 0, y: -1, z: 0 });
+      const ray = new rapier.Ray({ x: wx, y: wy, z: wz }, { x: 0, y: -1, z: 0 });
       const hit = world.castRay(
         ray,
-        0.34 + config.wheelRadius + 0.12,
+        config.wheelRadius + config.clearance + 0.35,
         true,
-        rapier.QueryFilterFlags.EXCLUDE_DYNAMIC | rapier.QueryFilterFlags.EXCLUDE_KINEMATIC | rapier.QueryFilterFlags.EXCLUDE_SENSORS
+        rapier.QueryFilterFlags.EXCLUDE_DYNAMIC | rapier.QueryFilterFlags.EXCLUDE_SENSORS
       );
+      if (dbg && (dbg.steps || 0) <= 12) {
+        dbg.rays = dbg.rays || [];
+        dbg.rays.push({ w: i, wx: +wx.toFixed(2), wy: +wy.toFixed(2), wz: +wz.toFixed(2), toi: hit ? +hit.timeOfImpact.toFixed(2) : null });
+      }
       if (!hit) continue;
 
       const toi = hit.timeOfImpact;
-      const cp = { x: wx, y: wy + 0.34 - toi, z: wz };
-      const compress = clamp(rest + 0.25 - toi, 0, 0.2);
+      const cp = { x: wx, y: wy - toi, z: wz };
+      const compress = clamp(rest - toi, 0, 0.22);
 
       const rx = cp.x - pos.x;
       const ry = cp.y - pos.y;
@@ -209,7 +244,13 @@ export function VehicleBody({ config, id, manual = true, position, yaw = 0, chil
       const vcy = lin.y + ang.z * rx - ang.x * rz;
       const vcz = lin.z + ang.x * ry - ang.y * rx;
 
-      const springF = clamp(k * compress - c * vcy, 0, staticLoad * 4.2);
+      const springLoad = clamp(k * compress, 0, staticLoad * 3);
+      const springF = springLoad - c * vcy;
+      if (dbg) {
+        dbg.hits++;
+        dbg.lastToi = toi;
+        dbg.lastSpring = Math.max(dbg.lastSpring, springLoad);
+      }
 
       const wfF = front ? steerCos * fwd.x + steerSin * right.x : fwd.x;
       const wfZ = front ? steerCos * fwd.z + steerSin * right.z : fwd.z;
@@ -220,7 +261,7 @@ export function VehicleBody({ config, id, manual = true, position, yaw = 0, chil
       const vlW = vcx * wlX + vcz * wlZ;
 
       const mu = handbrake && !front ? 0.32 : 1.12;
-      const maxLat = mu * springF;
+      const maxLat = mu * springLoad;
       const latF = clamp(-vlW * config.mass * 16, -maxLat, maxLat);
       maxSlip = Math.max(maxSlip, Math.abs(vlW) * (springF > staticLoad * 0.2 ? 1 : 0));
 
@@ -242,7 +283,7 @@ export function VehicleBody({ config, id, manual = true, position, yaw = 0, chil
         fFwd = rollRes;
       }
 
-      body.applyForceAtPoint(
+      body.addForceAtPoint(
         {
           x: wfF * fFwd + wlX * latF,
           y: springF,
@@ -264,7 +305,7 @@ export function VehicleBody({ config, id, manual = true, position, yaw = 0, chil
     const up = quatVec(quat, 0, 1, 0);
     if (up.y < 0.85) {
       const gain = config.mass * 2.2;
-      body.applyTorque({ x: -up.z * gain, y: 0, z: up.x * gain }, true);
+      body.applyTorqueImpulse({ x: -up.z * gain * STEP_DT, y: 0, z: up.x * gain * STEP_DT }, true);
     }
   });
 
@@ -276,10 +317,8 @@ export function VehicleBody({ config, id, manual = true, position, yaw = 0, chil
     const body = bodyRef.current;
     if (!body) return;
 
-    if (config.bike) {
-      bikeKinematic(body, rt, s, config, delta);
-      return;
-    }
+    bikeKinematic(body, rt, s, config, delta);
+    return;
 
     const driven = s.controlMode === "driving" && s.activeVehicleId === id;
 
@@ -338,7 +377,7 @@ export function VehicleBody({ config, id, manual = true, position, yaw = 0, chil
   return (
     <RigidBody
       ref={bodyRef}
-      type={config.bike ? "kinematicPosition" : "dynamic"}
+      type="kinematicPosition"
       colliders={false}
       mass={config.mass}
       linearDamping={config.bike ? 0 : 0.02}
