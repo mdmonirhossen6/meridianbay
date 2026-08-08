@@ -512,6 +512,7 @@ function bikeKinematic(body: any, rt: RuntimeVehicle, s: ReturnType<typeof useGa
   rt.skid = handbrake && Math.abs(speed) > 5 ? clamp((Math.abs(speed) / config.maxSpeed) * 0.8 + 0.2, 0, 1) : 0;
 
   if (driven) {
+    worldApi.player.speed = speed;
     useGame.getState().setSpeed(Math.abs(speed) * 3.6);
     if (Math.abs(speed) < 0.4) {
       worldApi.ground.lastGood = { x: nx, z: nz };
